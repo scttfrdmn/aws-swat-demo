@@ -1,0 +1,7 @@
+scenario_id,label,cn2_pct,esco,surlag
+s01,Baseline (calibrated),0,0.95,4
+s02,Cover crops (CN2 -8%),-8,0.95,4
+s03,Reduced tillage (CN2 -4%),-4,0.95,4
+s04,Drainage water mgmt (surlag 8),0,0.95,8
+s05,Higher ET (esco 0.80),0,0.80,4
+s06,Aggressive BMP combo,-8,0.85,8

@@ -1,0 +1,25 @@
+Package: aws.swat.demo
+Title: SWAT+ Ensemble on AWS with staRburst, Validated Against Open NWM Data
+Version: 0.0.0.9000
+Authors@R:
+    person("Scott", "Friedman", email = "help@starburst.ing", role = c("aut", "cre"))
+Description: Demonstration project (not a CRAN package). Runs a SWAT+ BMP scenario
+    ensemble across AWS workers via staRburst and validates simulated streamflow
+    against the NOAA National Water Model retrospective from the AWS Registry of
+    Open Data, with a visual Shiny front-end. Maumee River / Western Lake Erie.
+License: Apache License 2.0
+Encoding: UTF-8
+Imports:
+    shiny,
+    plotly,
+    leaflet,
+    DT,
+    jsonlite,
+    processx,
+    reticulate
+Suggests:
+    starburst,
+    paws.storage,
+    dataRetrieval
+Remotes:
+    scttfrdmn/starburst

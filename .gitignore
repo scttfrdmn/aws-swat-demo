@@ -1,0 +1,25 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# renv
+renv/library/
+renv/local/
+renv/staging/
+
+# project data (large / fetched at runtime)
+data-raw/model/
+data-raw/*.tar.gz
+# keep the small committed NWM cache, ignore large pulls:
+data-raw/nwm_cache/*.nc
+data-raw/nwm_cache/*.zarr
+
+# python venv for reticulate
+.venv/
+__pycache__/
+
+# OS
+.DS_Store
