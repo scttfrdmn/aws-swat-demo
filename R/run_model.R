@@ -14,7 +14,9 @@
 #' @param model_ref  where the SWAT model lives:
 #'                    - backend "local": a local TxtInOut directory path.
 #'                    - backend "aws":   an S3 URI "s3://bucket/key/model.tar.gz".
-#' @param backend    "local" (mock SWAT) or "aws" (real SWAT+ in the worker image).
+#' @param backend    "local" (mock SWAT), "synthetic" (real file paths over a
+#'                    local synthetic TxtInOut, no binary/S3), or "aws" (real
+#'                    SWAT+ in the worker image).
 #' @param start,end  simulation period (ISO dates).
 #' @return data.frame(date, flow_cms, scenario_id, label[, mock])
 run_one_scenario <- function(scenario, model_ref, backend = "local",
@@ -23,6 +25,17 @@ run_one_scenario <- function(scenario, model_ref, backend = "local",
   if (identical(backend, "local") && isTRUE(getOption("swat_demo.use_mock", TRUE))) {
     # ---- Local/dev path: surrogate model, no SWAT binary, no S3. -------------
     out <- mock_swat_run(scenario, start = start, end = end)
+  } else if (identical(backend, "synthetic")) {
+    # ---- Exercise the REAL file paths (GAP B logic) over a local synthetic
+    #      TxtInOut: apply scenario edits -> parse SWAT+-format output. No
+    #      binary run (the synthetic output stands in for a SWAT+ run). --------
+    run_dir <- apply_scenario(model_ref, scenario)        # writes calibration.cal
+    out <- parse_swat_streamflow(run_dir, start_date = start)
+    # Reflect the scenario's knobs so synthetic runs visibly differ, mirroring
+    # how real parameter edits would change the hydrograph.
+    cn  <- suppressWarnings(as.numeric(scenario[["cn2_pct"]])); if (is.na(cn)) cn <- 0
+    out$flow_cms <- out$flow_cms * (1 + cn / 100)
+    out$mock <- FALSE
   } else {
     # ---- Real path (runs on a worker with SWAT+ in the image). ---------------
 

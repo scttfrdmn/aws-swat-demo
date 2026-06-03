@@ -13,6 +13,21 @@ science data** pulled from the **AWS Registry of Open Data (RODA)**.
 
 ---
 
+## Screenshots
+
+The Shiny app, running locally (mock SWAT compute) against **real NWM data from RODA**:
+
+| Map (study reach) | Hydrographs vs real NWM | Skill vs NWM |
+|---|---|---|
+| ![map](docs/screenshots/01-map.png) | ![hydrographs](docs/screenshots/02-hydrographs.png) | ![skill](docs/screenshots/03-skill.png) |
+
+The bold black line in the hydrograph is the **real NOAA National Water Model
+retrospective streamflow** for the Maumee at Waterville (note the authentic
+June–July 2015 flood peak ≈ 1400 m³/s); the colored lines are the SWAT scenario
+ensemble. The skill table ranks each scenario by KGE/NSE/PBIAS against that
+reference. (SWAT compute is the labelled mock surrogate here; the NWM data and the
+gauge→reach linkage are real.)
+
 ## The real science
 
 The demo answers a genuine question: *how do different agricultural BMP / parameter

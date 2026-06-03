@@ -15,7 +15,7 @@
 #' @param workers cloud workers when backend = "aws".
 #' @return list(series, fit, reference, observed, meta)
 run_ensemble <- function(scenarios,
-                         backend  = c("local", "aws"),
+                         backend  = c("local", "synthetic", "aws"),
                          model_ref = NULL,
                          start = "2015-01-01", end = "2015-12-31",
                          gauge = "04193500",
@@ -36,6 +36,14 @@ run_ensemble <- function(scenarios,
     series_list <- lapply(rows, function(r)
       run_one_scenario(as_list(r), model_ref %||% "LOCAL_MOCK",
                        backend = "local", start = start, end = end))
+  } else if (backend == "synthetic") {
+    # Real file paths over a local synthetic TxtInOut (no binary, no S3, no AWS).
+    options(swat_demo.use_mock = FALSE)
+    md <- model_ref %||% file.path("data-raw", "model")
+    if (!dir.exists(md)) stop("synthetic backend needs a local model dir at ", md,
+                              " — run data-raw/make-synthetic-model.R")
+    series_list <- lapply(rows, function(r)
+      run_one_scenario(as_list(r), md, backend = "synthetic", start = start, end = end))
   } else {
     # AWS: fan across staRburst workers via a detached session.
     if (is.null(model_ref)) stop("backend='aws' requires model_ref = 's3://.../model.tar.gz'")

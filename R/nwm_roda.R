@@ -36,42 +36,72 @@ resolve_comid <- function(gauge = MAUMEE_GAUGE) {
   out
 }
 
-#' Pull NWM retrospective daily-mean streamflow for one reach from RODA.
+#' NWM retrospective daily-mean streamflow for one reach from RODA.
 #'
-#' Uses reticulate + xarray/zarr/s3fs (anonymous S3). Falls back to a cached
-#' slice in data-raw/nwm_cache/ if Python/network is unavailable, and labels
-#' the result with attr(x, "source").
+#' **Cache-first.** A live read of the full-CONUS NWM Zarr store on RODA takes
+#' several MINUTES (opening the store + selecting one reach over a year is the
+#' expensive step), which is too slow for an interactive app. So we read a
+#' committed cache (itself real RODA data, produced by data-raw/cache-nwm.py)
+#' when present, and only do a live xarray/S3 pull when the cache misses AND
+#' the caller opts in via `live = TRUE` (or env SWAT_DEMO_LIVE_NWM=1).
+#'
+#' Either way the result carries attr(x, "source") describing provenance.
 #'
 #' @param comid integer NWM feature_id / NHDPlus COMID.
 #' @param start,end ISO date strings.
+#' @param live allow a slow live RODA pull on cache miss (default: env-gated).
 #' @return data.frame(date, flow_cms, source) — daily mean streamflow (m^3/s).
-nwm_streamflow <- function(comid, start = "2015-01-01", end = "2015-12-31") {
+nwm_streamflow <- function(comid, start = "2015-01-01", end = "2015-12-31",
+                           live = identical(Sys.getenv("SWAT_DEMO_LIVE_NWM"), "1")) {
   stopifnot(!is.null(comid))
 
-  pulled <- tryCatch(
-    .nwm_streamflow_xarray(comid, start, end),
-    error = function(e) {
-      message(sprintf("NWM Zarr read failed (%s); trying cache.", conditionMessage(e)))
-      NULL
-    }
-  )
-  if (!is.null(pulled)) {
-    attr(pulled, "source") <- "RODA: NOAA NWM Retrospective v3.0"
-    return(pulled)
-  }
-
-  # Fallback: cached slice committed to the repo for offline/dev use.
-  cache <- file.path("data-raw", "nwm_cache", sprintf("nwm_%s.csv", comid))
+  # 1. Cache first (fast; real RODA data committed to the repo).
+  cache <- .nwm_cache_path(comid)
   if (file.exists(cache)) {
     df <- utils::read.csv(cache)
     df$date <- as.Date(df$date)
     df <- df[df$date >= as.Date(start) & df$date <= as.Date(end), ]
-    attr(df, "source") <- "cache (offline NWM slice)"
-    return(df)
+    if (nrow(df) > 0) {
+      attr(df, "source") <- "RODA: NOAA NWM Retrospective v3.0 (cached)"
+      return(df)
+    }
   }
 
-  stop("NWM streamflow unavailable: no Python/xarray and no cache for COMID ", comid,
-       ". Run reticulate::py_install(c('xarray','zarr','s3fs','fsspec')) or provide a cache.")
+  # 2. Live RODA pull (slow: minutes). Opt-in only.
+  if (live) {
+    pulled <- tryCatch(.nwm_streamflow_xarray(comid, start, end),
+                       error = function(e) {
+                         message(sprintf("Live NWM read failed: %s", conditionMessage(e)))
+                         NULL
+                       })
+    if (!is.null(pulled)) {
+      .nwm_cache_write(comid, pulled)   # populate cache for next time
+      attr(pulled, "source") <- "RODA: NOAA NWM Retrospective v3.0 (live)"
+      return(pulled)
+    }
+  }
+
+  stop("NWM streamflow unavailable for COMID ", comid,
+       ": no cache for this reach/period. Pre-cache it with\n",
+       "  .venv/bin/python data-raw/cache-nwm.py --comid ", comid,
+       " --start ", start, " --end ", end, "\n",
+       "or call with live = TRUE (slow: several minutes).")
+}
+
+.nwm_cache_path <- function(comid) {
+  for (base in c("data-raw", file.path("..", "data-raw"))) {
+    p <- file.path(base, "nwm_cache", sprintf("nwm_%s.csv", comid))
+    if (file.exists(p)) return(p)
+  }
+  file.path("data-raw", "nwm_cache", sprintf("nwm_%s.csv", comid))
+}
+
+.nwm_cache_write <- function(comid, df) {
+  p <- file.path("data-raw", "nwm_cache", sprintf("nwm_%s.csv", comid))
+  tryCatch({
+    dir.create(dirname(p), recursive = TRUE, showWarnings = FALSE)
+    utils::write.csv(df, p, row.names = FALSE)
+  }, error = function(e) invisible())
 }
 
 # Internal: read the RODA Zarr store via Python xarray. Anonymous S3 access.
@@ -89,7 +119,8 @@ nwm_streamflow <- function(comid, start = "2015-01-01", end = "2015-12-31") {
     consolidated = TRUE
   )
   reach <- ds$sel(feature_id = as.integer(comid))
-  reach <- reach$sel(time = reticulate::py_slice(start, end))
+  py_slice <- reticulate::import_builtins()$slice
+  reach <- reach$sel(time = py_slice(start, end))
 
   # NWM stores hourly streamflow (m^3/s) in variable 'streamflow'.
   q_hourly <- reach[["streamflow"]]
