@@ -91,9 +91,45 @@ pre-5.3.8 OGR NULL-layer-name bug, and (b) NumPy-2 incompatibilities on the QGIS
 and base on `qgis/qgis:3.40-jammy` (Python 3.10 + NumPy 1.21, QSWAT+'s native
 era). See `docker/swataw/README.md` for the full list of fixes.
 
-### Next: Maumee GIS data assembly (below)
-Toolchain is proven; the remaining work is assembling real Maumee inputs into the
-SWAT+ AW `config.py` + `data/` layout and running the image on them.
+### ✅ Real model built: Tiffin River (Maumee tributary)
+First real Maumee-basin SWAT+ model is **built and runs to real streamflow**.
+Scope: Tiffin River at Stryker, OH (USGS 04185000, COMID 15662050, ~1062 km²) —
+a Maumee tributary, chosen over the full 17,000 km² basin for speed (same
+toolchain/data sources). `maumee-build/build-tiffin-inputs.sh` assembles it from
+**real public data**:
+- **DEM:** USGS 3DEP 30 m → UTM 17N
+- **Land use:** NLCD 2021 (MRLC) + lookup
+- **Soil:** uniform Hoytville (real NW-Ohio clay-loam till; full 152-col usersoil)
+- **Outlet:** point at the gauge
+- **Weather:** **real Daymet** daily precip+temp 2015–2018 (~1025 mm/yr, correct
+  for NW Ohio) as SWAT+ station files; solar/humidity/wind simulated from WGN.
+
+Result (verified on janus via `docker/swataw`): delineation → **8,818 HRUs /
+1,232 channels** → SWAT+ runs → daily streamflow at the outlet:
+**mean 4.4 m³/s vs USGS observed 11.5 m³/s, peaks 224 vs 129** — right order of
+magnitude, realistic flashy hydrograph, **uncalibrated** (default params + single
+dominant soil, so it underestimates baseflow / overshoots peaks, as expected).
+Daily series saved: `maumee-build/tiffin/results/tiffin_streamflow_daily.csv`.
+
+#### Key gotchas solved in the data stage
+- **usersoil.csv** must be the full **152-column** schema (SOL_CAL1 at idx 132,
+  SOL_PH1 at idx 142); a short file → `IndexError` in DBUtils.
+- **WGN db** (`swatplus_wgn.sqlite`): the upstream URLs are dead (return HTML);
+  built a minimal valid one with one real NW-Ohio station (`docker/swataw/`).
+  Its monthly table FK column must be **`wgn_id`** (not `weather_wgn_cli_id`).
+- **WGN-only weather yields ZERO flow** — the AW editor only links HRUs to
+  climate from *observed* station files (`create_stations=y --import_type=observed`).
+  Supplying real Daymet pcp+tmp station files makes it write `weather-sta.cli`
+  (station → wgn, pcp/tmp observed, slr/hmd/wnd `sim`) → real precip → real flow.
+- Docker writes outputs as **root**; reset the model dir between runs via
+  `docker run ... rm -rf /model/<proj>` (the ssh user can't delete root files).
+
+### Next (optional)
+- Calibrate (SWAT+ AW supports `calibration.cal` / `Calibrate=True`) to tighten
+  fit vs the gauge — or leave uncalibrated for the demo (honestly labelled).
+- Scale to the full Maumee basin (same scripts, bigger bbox + longer delineation).
+- Wire this real TxtInOut into the demo: stage to S3, run the BMP ensemble on
+  staRburst workers, validate vs the cached NWM reference.
 2. **Assemble Maumee GIS inputs** (real, public):
    - DEM: USGS 3DEP (or NWM NHDPlus) clipped to the Maumee HUC (04100009 + upstream).
    - Land use: NLCD 2021 (MRLC) clipped + `landuse_lookup.csv`.

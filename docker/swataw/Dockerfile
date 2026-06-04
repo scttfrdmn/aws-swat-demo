@@ -23,7 +23,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /tmp/awinstall
 RUN wget -q -O aw.tar.gz "https://github.com/celray/swatplus-automatic-workflow/archive/refs/heads/master.tar.gz" \
  && wget -q -O TauDEM5Bin_Linux.zip "https://github.com/celray/swatplus-automatic-workflow/releases/download/v1.0.4/TauDEM5Bin_Linux.zip" \
- && wget -q -O swatplus_wgn.sqlite "https://plus.swat.tamu.edu/downloads/swatplus_wgn.sqlite" \
  && mkdir -p /root/.SWAT/SWATPlus /root/.local/share/swatplus \
  && tar xzf aw.tar.gz \
  && unzip -q TauDEM5Bin_Linux.zip \
@@ -31,7 +30,6 @@ RUN wget -q -O aw.tar.gz "https://github.com/celray/swatplus-automatic-workflow/
  && mv TauDEM5Bin /root/.local/share/swatplus/TauDEM5Bin \
  && mkdir -p /usr/local/share/SWATPlus \
  && cp -r /root/.local/share/swatplus/TauDEM5Bin /usr/local/share/SWATPlus/TauDEM5Bin \
- && mv swatplus_wgn.sqlite /root/.SWAT/SWATPlus/Workflow/editor_api/ \
  && chmod -R 777 /root/.local/share/swatplus/TauDEM5Bin /usr/local/share/SWATPlus/TauDEM5Bin \
  && chmod +x /root/.SWAT/SWATPlus/Workflow/swatplus_aw.sh \
  && rm -rf /tmp/awinstall
@@ -40,6 +38,7 @@ RUN wget -q -O aw.tar.gz "https://github.com/celray/swatplus-automatic-workflow/
 # includes, so pyximport/import loads prebuilt modules rather than compiling
 # (and failing to find numpy headers) at runtime. (np.int_t exists in NumPy 1.21,
 # so no source patch is needed on the jammy base.)
+COPY swatplus_wgn.sqlite /root/.SWAT/SWATPlus/Workflow/editor_api/swatplus_wgn.sqlite
 COPY build_pyx.py /tmp/build_pyx.py
 RUN python3 /tmp/build_pyx.py
 

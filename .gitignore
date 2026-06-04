@@ -23,3 +23,7 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Maumee/Tiffin GIS build: large rasters are fetched by scripts, not committed
+maumee-build/*/data/rasters/*.tif
+maumee-build/*/tiffin/
