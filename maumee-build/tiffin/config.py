@@ -29,16 +29,16 @@ reservoir_management_settings = []
 Start_Year            = 2015
 End_Year              = 2018
 Warm_Up_Period        = 1
-Print_CSV             = 0
+Print_CSV             = 1
 Print_Objects         = {
                              "channel_sd"   : [1, 2, 3, 4],
                         }
 Executable_Type       = 1
 Cal_File              = ""
-Calibrate               = False
-Calibration_Config_File = ""
-Number_of_Runs          = 1
-Number_of_Processes     = 1
+Calibrate               = True
+Calibration_Config_File = "calibration_config.csv"
+Number_of_Runs          = 80
+Number_of_Processes     = 8
 Make_Figures            = False
 Keep_Log                = True
 '''---------------------------  Settings End  -----------------------'''

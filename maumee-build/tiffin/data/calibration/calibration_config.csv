@@ -1,0 +1,14 @@
+Parameter,Minimum,Maximum,Change Type,
+"1 = pctchg, 2 = abschg, 3 = absval",,,,
+File Name:,,observed_flows.csv,,
+Channel Number:,,1195,,
+Timestep:,,2,,"1 = day, 2 = month, 3 = year"
+Calibration Variable:,,1,,"1 = flow, 2 = evapotranspiration"
+,,,,
+Parameter,Min,Max,Change Type,
+cn2,-25,25,pctchg,
+esco,-0.6,0.6,abschg,
+perco,-20,20,pctchg,
+awc,-20,20,pctchg,
+surlag,-20,20,pctchg,
+alpha,-20,20,pctchg,

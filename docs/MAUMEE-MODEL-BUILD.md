@@ -124,9 +124,37 @@ Daily series saved: `maumee-build/tiffin/results/tiffin_streamflow_daily.csv`.
 - Docker writes outputs as **root**; reset the model dir between runs via
   `docker run ... rm -rf /model/<proj>` (the ssh user can't delete root files).
 
+### Calibration attempt (SWAT+ AW built-in) — ran, but model not fittable as-is
+Ran AW's built-in calibration on janus (Latin-Hypercube + OAT, 6 params: cn2,
+esco, perco, awc, surlag, alpha; monthly NSE vs **real USGS** flow at ch 1195;
+~105 parameter sets, 8 cores, ~40 min). It works end-to-end (results in
+`results/calibration_results.csv`, best params in `results/best_calibration.cal`).
+
+**Result: best monthly NSE = -2.04 (range -2.0 .. -6.3) — i.e. NOT fittable**
+with this setup. This is a real hydrology limitation, not a toolchain bug:
+- The model uses a **single uniform soil** (Hoytville everywhere) — real Maumee
+  SWAT models use spatially-varied gSSURGO soils.
+- The Maumee/Tiffin basin is heavily **tile-drained** agricultural land; capturing
+  its hydrograph requires explicit SWAT+ tile-drain parameters + management, not
+  just the 6 standard knobs.
+- Weather is WGN-augmented (only pcp+tmp observed); solar/humidity/wind generated.
+- The model over-predicts peaks (sim max ~266 vs observed ~129 m³/s); tuning the
+  6 params can't overcome the structural simplifications.
+
+Two AW-calibration gotchas fixed along the way:
+- `run_calibration.py` hardcodes the SWAT+ exe name `swatplusrev59-static.exe` in
+  `editor_api/swat_exe/` — symlink the real Linux binary to that name (in image).
+- **`ENV swatplus_wf_dir` must have a trailing slash** — `run_calibration.py`
+  concatenates `{swatplus_wf_dir}editor_api/...` with no separator, so without the
+  slash the executable path is broken and SWAT+ silently never runs (zero flow).
+
+**Recommendation:** for a demo, present the model **uncalibrated and honestly
+labelled** (it's the right order of magnitude — mean 4.4 vs 11.5 m³/s — and shows
+realistic dynamics). Proper calibration is research-grade work (varied soils +
+tile drainage + more parameters + longer optimization), out of scope here.
+
 ### Next (optional)
-- Calibrate (SWAT+ AW supports `calibration.cal` / `Calibrate=True`) to tighten
-  fit vs the gauge — or leave uncalibrated for the demo (honestly labelled).
+- Calibrate properly (varied soils, tile drains) — research-grade, deferred.
 - Scale to the full Maumee basin (same scripts, bigger bbox + longer delineation).
 - Wire this real TxtInOut into the demo: stage to S3, run the BMP ensemble on
   staRburst workers, validate vs the cached NWM reference.
