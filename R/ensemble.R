@@ -8,30 +8,65 @@
 #'
 #' @param scenarios data.frame; one row per scenario. Must include scenario_id,
 #'   label, and any parameter-knob columns (e.g. cn2_pct, esco, surlag).
-#' @param backend "local" (sequential, mock SWAT) or "aws" (fan across staRburst workers).
+#' @param backend "local" (mock SWAT), "synthetic" (real file paths, synthetic
+#'   model), "real" (read committed REAL SWAT+ ensemble outputs, e.g. the Tiffin
+#'   model run on janus / a staRburst worker), or "aws" (fan across staRburst
+#'   workers live).
 #' @param model_ref local TxtInOut dir (local backend) or s3:// model tarball (aws).
 #' @param start,end simulation + comparison period.
-#' @param gauge USGS gauge for the NWM/observed reference (default Maumee @ Waterville).
+#' @param gauge USGS gauge for the reference. Default Tiffin R. at Stryker
+#'   (04185000) — the gauge of the real demo model.
+#' @param ref_source "nwm" (RODA NWM retrospective) or "usgs" (USGS observed at
+#'   the gauge). For the real Tiffin model the matching reference is the USGS gauge.
+#' @param results_dir for backend="real": dir of <scenario_id>_flow.csv files.
 #' @param workers cloud workers when backend = "aws".
 #' @return list(series, fit, reference, observed, meta)
 run_ensemble <- function(scenarios,
-                         backend  = c("local", "synthetic", "aws"),
+                         backend  = c("local", "synthetic", "real", "aws"),
                          model_ref = NULL,
-                         start = "2015-01-01", end = "2015-12-31",
-                         gauge = "04193500",
+                         start = "2016-01-01", end = "2018-12-31",
+                         gauge = "04185000",
+                         ref_source = c("usgs", "nwm"),
+                         results_dir = "maumee-build/tiffin/results/ensemble",
                          workers = NULL) {
   backend <- match.arg(backend)
+  ref_source <- match.arg(ref_source)
   scenarios <- .normalize_scenarios(scenarios)
 
-  # --- 1. Real reference data from RODA (NWM) + optional USGS observed. ------
-  ref <- nwm_reference(gauge = gauge, start = start, end = end)
+  # --- 1. Real reference: USGS observed at the gauge, or NWM from RODA. ------
   obs <- usgs_observed(gauge = gauge, start = start, end = end)
+  if (ref_source == "usgs") {
+    if (is.null(obs)) stop("USGS observed unavailable for gauge ", gauge,
+                           " (need dataRetrieval or network).")
+    ref <- list(gauge = gauge, comid = NA_integer_, flow = obs)
+    attr(ref$flow, "source") <- sprintf("USGS observed (gauge %s)", gauge)
+  } else {
+    ref <- nwm_reference(gauge = gauge, start = start, end = end)
+  }
 
-  # --- 2. Run the ensemble. -------------------------------------------------
+  # --- 2. Run / collect the ensemble. ---------------------------------------
   rows <- split(scenarios, seq_len(nrow(scenarios)))
   as_list <- function(r) as.list(r)
 
-  if (backend == "local") {
+  if (backend == "real") {
+    # Read committed REAL SWAT+ per-scenario outputs (produced by running the
+    # actual model — locally, on janus, or on a staRburst worker). Each file is
+    # <scenario_id>_flow.csv: Date,flow (outlet daily streamflow, m^3/s).
+    # Resolve results_dir whether the app runs from the project root or app/.
+    rdir <- results_dir
+    if (!dir.exists(rdir) && dir.exists(file.path("..", rdir))) rdir <- file.path("..", rdir)
+    series_list <- lapply(rows, function(r) {
+      sc <- as_list(r); sid <- sc[["scenario_id"]]
+      f <- file.path(rdir, paste0(sid, "_flow.csv"))
+      if (!file.exists(f)) stop("missing real ensemble output: ", f)
+      d <- utils::read.csv(f, header = FALSE, col.names = c("date", "flow_cms"))
+      d$date <- as.Date(d$date)
+      d <- d[d$date >= as.Date(start) & d$date <= as.Date(end), ]
+      data.frame(date = d$date, flow_cms = as.numeric(d$flow_cms),
+                 scenario_id = sid, label = sc[["label"]], mock = FALSE,
+                 stringsAsFactors = FALSE)
+    })
+  } else if (backend == "local") {
     options(swat_demo.use_mock = TRUE)
     series_list <- lapply(rows, function(r)
       run_one_scenario(as_list(r), model_ref %||% "LOCAL_MOCK",

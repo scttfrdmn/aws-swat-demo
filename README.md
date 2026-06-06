@@ -13,20 +13,29 @@ science data** pulled from the **AWS Registry of Open Data (RODA)**.
 
 ---
 
-## Screenshots
+## Screenshots — the REAL model
 
-The Shiny app, running locally (mock SWAT compute) against **real NWM data from RODA**:
+The Shiny app running the **real SWAT+ BMP ensemble** for the Tiffin River (a Maumee
+tributary), validated against **real USGS gauge observations**:
 
-| Map (study reach) | Hydrographs vs real NWM | Skill vs NWM |
+| Map (study reach) | Hydrographs vs USGS observed | Skill vs observed |
 |---|---|---|
 | ![map](docs/screenshots/01-map.png) | ![hydrographs](docs/screenshots/02-hydrographs.png) | ![skill](docs/screenshots/03-skill.png) |
 
-The bold black line in the hydrograph is the **real NOAA National Water Model
-retrospective streamflow** for the Maumee at Waterville (note the authentic
-June–July 2015 flood peak ≈ 1400 m³/s); the colored lines are the SWAT scenario
-ensemble. The skill table ranks each scenario by KGE/NSE/PBIAS against that
-reference. (SWAT compute is the labelled mock surrogate here; the NWM data and the
-gauge→reach linkage are real.)
+The **bold black line** is **real USGS observed streamflow** at Tiffin River @ Stryker, OH
+(gauge 04185000, 2016–2018); the **colored lines** are the **6 BMP scenarios**, each a
+**real SWAT+ run** over a real Tiffin model built from public GIS data. The skill table ranks
+each scenario by KGE/NSE/PBIAS vs the gauge.
+
+**Honest read:** the model is **uncalibrated** — it's flashier than reality (over-predicts
+peaks, under-predicts baseflow; PBIAS ≈ −67%). That's expected for an uncalibrated SWAT+
+model of a tile-drained ag basin with a single dominant soil. The demo's point is the
+**workflow** — real model → BMP ensemble (the staRburst cloud-burst workload) → validate vs
+open data — not a publication-grade calibration. See `docs/MAUMEE-MODEL-BUILD.md`.
+
+Other backends: **`local`** (fast mock SWAT, for UI dev) and **`aws`** (fan the ensemble
+across real staRburst workers). An earlier mode also validates against the **NOAA NWM
+retrospective from RODA** (`ref_source="nwm"`); see `R/nwm_roda.R`.
 
 ## The real science
 

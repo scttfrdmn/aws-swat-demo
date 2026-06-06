@@ -18,26 +18,42 @@ apply_scenario <- function(model_dir, scenario) {
   dir.create(run_dir, recursive = TRUE, showWarnings = FALSE)
   file.copy(list.files(model_dir, full.names = TRUE), run_dir, recursive = TRUE)
 
-  # SWAT+ uses 'calibration.cal' to apply relative/absolute parameter changes
-  # without editing every HRU file. We write the scenario's knobs into it.
-  # (Knob names map to SWAT+ calibration parameter names; extend as needed.)
-  knobs <- scenario[setdiff(names(scenario), c("scenario_id", "label"))]
-  knobs <- knobs[!vapply(knobs, function(v) is.na(v) || v == "", logical(1))]
-
-  if (length(knobs)) {
+  # SWAT+ applies parameter changes via 'calibration.cal' (no need to edit every
+  # HRU file). The file format is verified against SWAT+ rev 60.5.2:
+  #   line1: free-text header
+  #   line2: integer count of parameters
+  #   line3: column header
+  #   then one row per param: NAME CHG_TYP VAL CONDS LYR1 LYR2 YEAR1 YEAR2 DAY1 DAY2 OBJ_TOT
+  # CHG_TYP: pctchg = relative %, absval = set absolute value, abschg = add.
+  # Each demo BMP knob maps to a SWAT+ calibration parameter:
+  #   cn2_pct -> cn2 pctchg   (curve number, % change; cover crops / reduced till)
+  #   esco    -> esco absval  (soil evaporation compensation, absolute 0..1)
+  #   surlag  -> surlag absval(surface runoff lag; drainage water management)
+  knob_map <- list(
+    cn2_pct = c("cn2",    "pctchg"),
+    esco    = c("esco",   "absval"),
+    surlag  = c("surlag", "absval"),
+    perco   = c("perco",  "pctchg"),
+    awc     = c("awc",    "pctchg"),
+    alpha   = c("alpha",  "pctchg")
+  )
+  rows <- list()
+  for (nm in names(knob_map)) {
+    v <- suppressWarnings(as.numeric(scenario[[nm]]))
+    if (length(v) == 0 || is.na(v)) next
+    parm <- knob_map[[nm]][1]; chg <- knob_map[[nm]][2]
+    rows[[length(rows) + 1]] <- sprintf(
+      "%-14s %-10s %12s %7d %5d %5d %6d %6d %6d %6d %8d",
+      parm, chg, format(v, nsmall = 0), 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
+  }
+  if (length(rows)) {
     cal <- file.path(run_dir, "calibration.cal")
-    lines <- c(
-      "calibration.cal: written by aws-swat-demo",
-      sprintf("%d", length(knobs)),
-      "cal_parm                 chg_typ            chg_val   conds  ..."
-    )
-    for (nm in names(knobs)) {
-      # pct knobs -> relative change ('pctchg'); others -> absolute ('absval').
-      chg_typ <- if (grepl("_pct$", nm)) "pctchg" else "absval"
-      parm    <- sub("_pct$", "", nm)
-      lines <- c(lines, sprintf("%-20s %-10s %12s", parm, chg_typ, knobs[[nm]]))
-    }
-    writeLines(lines, cal)
+    writeLines(c(
+      sprintf("calibration.cal: aws-swat-demo scenario %s", scenario[["scenario_id"]]),
+      sprintf(" %d", length(rows)),
+      "NAME           CHG_TYP                  VAL   CONDS  LYR1   LYR2  YEAR1  YEAR2   DAY1   DAY2  OBJ_TOT",
+      unlist(rows)
+    ), cal)
   }
   run_dir
 }

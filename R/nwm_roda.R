@@ -156,15 +156,31 @@ nwm_reference <- function(gauge = MAUMEE_GAUGE, start = "2015-01-01", end = "201
 #' Uses dataRetrieval if available; returns NULL otherwise.
 #' @return data.frame(date, flow_cms) or NULL.
 usgs_observed <- function(gauge = MAUMEE_GAUGE, start = "2015-01-01", end = "2015-12-31") {
-  if (!requireNamespace("dataRetrieval", quietly = TRUE)) return(NULL)
-  tryCatch({
-    raw <- dataRetrieval::readNWISdv(gauge, "00060", start, end)  # 00060 = discharge, cfs
-    raw <- dataRetrieval::renameNWISColumns(raw)
-    data.frame(date = as.Date(raw$Date),
-               flow_cms = raw$Flow * 0.0283168,  # cfs -> m^3/s
-               stringsAsFactors = FALSE)
+  # Primary: USGS Water Services daily-values JSON API (no package needed).
+  out <- tryCatch({
+    url <- sprintf(paste0("https://waterservices.usgs.gov/nwis/dv/?format=json",
+                          "&sites=%s&startDT=%s&endDT=%s&parameterCd=00060&statCd=00003"),
+                   gauge, start, end)
+    js <- jsonlite::fromJSON(url, simplifyVector = FALSE)
+    vals <- js$value$timeSeries[[1]]$values[[1]]$value
+    dates <- as.Date(vapply(vals, function(v) substr(v$dateTime, 1, 10), character(1)))
+    cfs <- suppressWarnings(as.numeric(vapply(vals, function(v) v$value, character(1))))
+    df <- data.frame(date = dates, flow_cms = cfs * 0.0283168,  # cfs -> m^3/s
+                     stringsAsFactors = FALSE)
+    df <- df[is.finite(df$flow_cms) & df$flow_cms >= 0, ]
+    if (nrow(df) == 0) NULL else df
   }, error = function(e) {
-    message(sprintf("USGS observed retrieval failed: %s", conditionMessage(e)))
+    message(sprintf("USGS JSON API failed (%s); trying dataRetrieval.", conditionMessage(e)))
     NULL
   })
+  if (!is.null(out)) return(out)
+
+  # Fallback: dataRetrieval if available.
+  if (!requireNamespace("dataRetrieval", quietly = TRUE)) return(NULL)
+  tryCatch({
+    raw <- dataRetrieval::readNWISdv(gauge, "00060", start, end)
+    raw <- dataRetrieval::renameNWISColumns(raw)
+    data.frame(date = as.Date(raw$Date), flow_cms = raw$Flow * 0.0283168,
+               stringsAsFactors = FALSE)
+  }, error = function(e) NULL)
 }

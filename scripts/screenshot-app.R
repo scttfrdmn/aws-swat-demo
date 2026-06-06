@@ -37,8 +37,8 @@ app$get_screenshot(file.path(out_dir, "02-hydrographs.png"))
 cat("wrote 02-hydrographs.png\n")
 
 # Skill tab.
-app$run_js("document.querySelector('a[data-value=\"Skill vs NWM\"]').click()")
-Sys.sleep(2)
+app$run_js("document.querySelector('a[data-value=\"Skill vs observed\"]').click()")
+Sys.sleep(3)
 app$get_screenshot(file.path(out_dir, "03-skill.png"))
 cat("wrote 03-skill.png\n")
 
