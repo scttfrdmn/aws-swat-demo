@@ -15,13 +15,22 @@
 # private base image (use_public_base = FALSE).
 
 # x86_64 only: the official SWAT+ Linux binary is ifx/x86_64.
-FROM --platform=linux/amd64 rocker/r-ver:4.4.2
+# R_VERSION must match the staRburst client's R so the worker image is used as
+# staRburst's base-<R_VERSION> (see docs/DEPLOY-AWS.md, GAP A).
+ARG R_VERSION=4.6.0
+FROM --platform=linux/amd64 rocker/r-ver:${R_VERSION}
 
-# ---- System deps: Python (Zarr/RODA) + unzip for the SWAT+ release ----------
+# ---- System deps -------------------------------------------------------------
+# Two groups: (1) staRburst's stock base apt set, so this image is a strict
+# SUPERSET of starburst-worker:base-<R_VERSION> and staRburst's env layer
+# (renv::restore on top) never fails on a missing system lib; (2) Python +
+# unzip for the SWAT+ release and the Zarr/RODA reader.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+      libcurl4-openssl-dev libssl-dev libxml2-dev libpq-dev zlib1g-dev \
+      libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
+      libgit2-dev libpng-dev libjpeg-dev libtiff-dev git pandoc \
       ca-certificates curl unzip \
       python3 python3-pip python3-venv \
-      libcurl4-openssl-dev libssl-dev libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- staRburst worker R deps (mirrors starburst Dockerfile.base) -------------
@@ -30,7 +39,12 @@ RUN R -e "install.packages(c('renv','future','globals','listenv','parallelly',\
       'reticulate'), repos='https://cloud.r-project.org')"
 
 # ---- Python stack for reading NWM retrospective Zarr from RODA ---------------
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
+# --ignore-installed: rocker/r-ver:4.6.0 rides a newer Debian where `packaging`
+# is distro-managed (no pip RECORD), so a plain install fails trying to uninstall
+# it. We don't need to replace distro packages, just add the Zarr stack on top.
+# (This layer is optional for the SWAT+ live run — the worker path is pure R; it
+# only matters for the on-worker NWM-RODA read.)
+RUN python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed \
       xarray zarr s3fs fsspec numpy pandas
 
 # ---- Official SWAT+ executable (Intel ifx, statically linked) ----------------
