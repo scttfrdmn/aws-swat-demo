@@ -112,8 +112,12 @@ run_ensemble <- function(scenarios,
   }
   options(swat_demo.use_mock = FALSE)
   n <- length(rows)
+  # x86_64 instance: the official SWAT+ Linux binary is ifx/x86_64 and will NOT
+  # run on staRburst's default c7g.xlarge (ARM64/Graviton). See docs/DEPLOY-AWS.md.
   session <- starburst::starburst_session(workers = workers %||% min(n, 10L),
-                                          launch_type = "EC2")
+                                          launch_type = "EC2",
+                                          instance_type = "c7i.xlarge",
+                                          use_spot = TRUE)
   on.exit(try(session$cleanup(), silent = TRUE), add = TRUE)
 
   ids <- lapply(rows, function(r) {
