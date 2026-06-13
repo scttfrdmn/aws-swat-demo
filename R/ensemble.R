@@ -120,14 +120,30 @@ run_ensemble <- function(scenarios,
                                           use_spot = TRUE)
   on.exit(try(session$cleanup(), silent = TRUE), add = TRUE)
 
+  # Build a SELF-CONTAINED worker function. R resolves the helper names called
+  # inside run_one_scenario() (.s3_download_and_untar, apply_scenario,
+  # parse_swat_streamflow, %||%) via that function's OWN closure environment, not
+  # via the names staRburst assigns into the worker's exec env. So passing helpers
+  # as `globals` does nothing. Instead we put every helper into a fresh
+  # environment, re-parent the functions into it, and ship the closure — qs2
+  # serializes a non-global closure env BY VALUE, so the helpers travel with it.
+  # (This is the demo-side cost of GAP A/B: no first-class "ship this function +
+  # its deps" hook.)
+  wenv <- new.env(parent = globalenv())
+  wenv$apply_scenario          <- apply_scenario
+  wenv$parse_swat_streamflow   <- parse_swat_streamflow
+  wenv$.s3_download_and_untar  <- .s3_download_and_untar
+  wenv$run_one_scenario        <- run_one_scenario
+  wenv$`%||%`                  <- `%||%`
+  for (nm in ls(wenv)) if (is.function(wenv[[nm]])) environment(wenv[[nm]]) <- wenv
+  worker_fn <- wenv$run_one_scenario
+
   ids <- lapply(rows, function(r) {
     sc <- as.list(r)
     session$submit(quote(
-      run_one_scenario(sc, model_ref, backend = "aws", start = start, end = end)
+      worker_fn(sc, model_ref, backend = "aws", start = start, end = end)
     ), globals = list(sc = sc, model_ref = model_ref, start = start, end = end,
-                      run_one_scenario = run_one_scenario,
-                      apply_scenario = apply_scenario,
-                      parse_swat_streamflow = parse_swat_streamflow))
+                      worker_fn = worker_fn))
   })
   res <- session$collect(wait = TRUE)
   # collect() returns results keyed/ordered by submission; coerce to list of frames.

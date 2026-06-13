@@ -97,12 +97,53 @@ was out of scope for this pass). No billable compute ran — the failure was at
 `set_desired_capacity`, before any instance launched (verified: zero EC2 instances,
 zero ECS tasks, no stray c7i ASG).
 
+### ✅ GREEN RUN (2026-06-13) — the full ensemble ran on live EC2
+
+After clearing GAP A′ with `starburst_setup_ec2(instance_types="c7i.xlarge")`, all
+**6 BMP scenarios ran real SWAT+ on live c7i.xlarge spot workers** and returned real
+Tiffin River streamflow (1096 daily values each, 2016–2018), scored against real
+USGS gauge 04185000. Skill vs observed (uncalibrated, honest):
+
+| scenario | NSE | KGE | PBIAS | mean (m³/s) | peak |
+|---|---|---|---|---|---|
+| s06 Aggressive BMP combo | 0.37 | 0.35 | −51% | 5.60 | 71.3 |
+| s05 Higher ET (esco 0.80) | 0.38 | 0.35 | −49% | 5.92 | 65.7 |
+| s04 Drainage water mgmt | 0.38 | 0.34 | −50% | 5.80 | 63.1 |
+| s03 Reduced tillage | 0.35 | 0.33 | −51% | 5.59 | 66.9 |
+| s01 Baseline | 0.37 | 0.33 | −50% | 5.74 | 62.4 |
+| s02 Cover crops | 0.34 | 0.33 | −53% | 5.42 | 69.5 |
+
+(USGS observed mean 11.5 m³/s; positive NSE/KGE, ~−50% PBIAS — the model
+under-predicts, consistent with the known single-soil/tile-drainage limitation,
+honestly labeled. The scenarios produce **distinct hydrographs** — the ensemble
+differentiates BMP options, which is the demo's whole point.) Recorded in
+`maumee-build/tiffin/results/live-aws-fit.csv`.
+
+### Two more gaps surfaced at the task layer (worked around demo-side)
+1. **renv.lock must be COMPLETE.** The env build runs `renv::init(bare=TRUE);
+   renv::restore()`, which isolates `.libPaths()` to the project library — so any
+   package NOT in the lock (even one baked into the base, like `qs2`) is invisible
+   at runtime. A 3-package lock killed every worker with "no package called 'qs2'".
+   Fix: generate the lock from the base image's `installed.packages()` (complete,
+   exact versions) so restore is a no-op.
+2. **Globals don't follow into a shipped function's body.** `run_one_scenario` calls
+   `.s3_download_and_untar`/`apply_scenario`/`parse_swat_streamflow`; R resolves
+   those via the function's *own* closure env, not the names staRburst assigns into
+   the worker exec env — so passing them as `globals=` does nothing (every task
+   errored "could not find function .s3_download_and_untar"). Fix: re-parent all
+   helpers into one fresh env and ship that closure (qs2 serializes a non-global
+   closure env by value). See `.run_ensemble_aws()` in `R/ensemble.R`.
+
+   → These two reinforce the **GAP B** ask: a first-class "ship this function +
+   its dependency closure + an input dir, get named outputs back" hook.
+
 ### Bottom line
-Real GIS → SWAT+ model → ensemble → visual app → **image in ECR built on the SWAT+
-base → x86_64 task definition registered on live AWS**. The base-image workaround
-(GAP A) is proven to work; a single supported setup call (`starburst_setup_ec2`)
-clears GAP A′ and the ensemble would run. Both gaps point at the same first-class
-extensions: a `worker_image=` override and lazy/clear capacity-provider setup.
+Real GIS → SWAT+ model → ensemble → visual app → image in ECR built on the SWAT+
+base → x86_64 workers → **6 real SWAT+ runs on live EC2, scored vs USGS**. Proven
+end-to-end. The friction (GAP A: clobber the shared base; GAP A′: pre-provision the
+capacity provider; GAP B: complete-lock + closure-shipping by hand) all points at
+the same first-class extensions: a `worker_image=` override, lazy/clear
+capacity-provider setup, and a function+inputs+outputs staging hook.
 
 ## ⚠️ Critical: x86_64 workers only
 
