@@ -15,6 +15,37 @@ outlet hydrograph — then scored against real USGS observed flow.
 
 Everything except **launching the EC2 workers** is done (the only billable step).
 
+## 🚧 The live run surfaces GAP A — the headline feasibility finding
+
+Attempting the live run exposes the exact staRburst limitation the feasibility
+brief predicted (**GAP A: no first-class "use my binary image" hook**):
+
+- staRburst workers do **not** run a prebuilt image directly. `ensure_environment()`
+  builds a *new* per-environment image: `FROM base-<Rversion>` + `COPY renv.lock` +
+  `renv::restore()` + the staRburst `worker.R`, tagged by an renv hash. The worker
+  runs **that** image.
+- So the SWAT+ binary only reaches a worker if it lives in the **base** image that
+  staRburst builds on top of — and staRburst picks the base by **R version**
+  (`base-<major.minor>`), not by a custom tag.
+- Mismatch hit here: the **client R is 4.6.0** (staRburst wants `base-4.6.0`), but
+  the SWAT+ image is built on **rocker/r-ver:4.4.2** (`base-swatplus`). staRburst
+  won't use it, and forcing a 4.4.2 base under a 4.6.0-locked renv mismatches.
+
+**This is the real result of the whole exercise:** every layer works (real GIS →
+SWAT+ model → ensemble → visual app → image in ECR → model in S3), but staRburst
+needs a **GAP-A extension** to cleanly run a binary-bearing image:
+
+1. **`base_image=` / `worker_image=` override** on `starburst_session()`/`plan()` —
+   "use exactly this ECR image as the worker, skip the renv build" (for tools that
+   bring their own non-R environment). *The cleanest fix.*
+2. Or a **custom-layers hook** so the renv image is built `FROM` a user base that
+   carries the binary, with R-version reconciliation.
+
+Until then, the live run requires reconciling R versions: rebuild the SWAT+ image
+on `rocker/r-ver:4.6.0`, push as `base-4.6.0`, and let staRburst's renv layer build
+on top (the binary survives in the base; renv only adds R packages). That's a
+viable workaround, not a clean integration — which is precisely the GAP-A point.
+
 ## ⚠️ Critical: x86_64 workers only
 
 The official SWAT+ Linux binary is **x86_64 / ifx** — it will NOT run on
